@@ -9,7 +9,7 @@ def get_loaders(root, batch_size, resolution, num_workers=32):
     train_dataset = ImageFolder(
         root + "/train",
         transforms.Compose([
-            transforms.Resize(resolution),
+            transforms.Resize([resolution, resolution]),
             transforms.RandomResizedCrop(resolution),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -18,9 +18,9 @@ def get_loaders(root, batch_size, resolution, num_workers=32):
     )
 
     val_dataset = ImageFolder(
-        root + "/val", 
+        root + "/val",
         transforms.Compose([
-            transforms.Resize(resolution),
+            transforms.Resize([resolution, resolution]),
             transforms.ToTensor(),
             normalize,
         ])

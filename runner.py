@@ -116,8 +116,8 @@ class Runner():
 
             if acc > self.best_metric and epoch > 50:
                 self.best_metric = acc
-                self.save(epoch, "epoch[%05d]_acc[%.4f]_test[%.4f]" % (
-                    epoch, acc, test_acc))
+                self.save(epoch, "epoch[%05d]_acc[%.4f]" % (
+                    epoch, acc))
 
     def test(self, train_loader, val_loader):
         print("\n Start Test")
