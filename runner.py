@@ -44,7 +44,7 @@ class Runner():
 
         torch.save({"model_type": self.arg.model,
                     "start_epoch": epoch + 1,
-                    "network": self.net.state_dict(),
+                    "network": self.net.module.state_dict(),
                     "optimizer": self.optim.state_dict(),
                     "best_metric": self.best_metric
                     }, self.save_dir + "/%s.pth.tar" % (filename))
@@ -65,11 +65,11 @@ class Runner():
         if os.path.exists(file_path) is True:
             print("Load %s to %s File" % (self.save_dir, filename))
             ckpoint = torch.load(file_path)
-            if ckpoint["model_type"] != self.model_type:
+            if ckpoint["model_type"] != self.arg.model:
                 raise ValueError("Ckpoint Model Type is %s" %
                                  (ckpoint["model_type"]))
 
-            self.net.load_state_dict(ckpoint['network'])
+            self.net.module.load_state_dict(ckpoint['network'])
             self.optim.load_state_dict(ckpoint['optimizer'])
             self.start_epoch = ckpoint['start_epoch']
             self.best_metric = ckpoint["best_metric"]
@@ -111,10 +111,9 @@ class Runner():
         self.net.eval()
         with torch.no_grad():
             acc = self._get_acc(val_loader)
-            self.logger.log_write("valid", epoch=epoch,
-                                  acc=acc, test_acc=test_acc)
+            self.logger.log_write("valid", epoch=epoch, acc=acc)
 
-            if acc > self.best_metric and epoch > 50:
+            if acc > self.best_metric:
                 self.best_metric = acc
                 self.save(epoch, "epoch[%05d]_acc[%.4f]" % (
                     epoch, acc))

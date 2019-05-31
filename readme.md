@@ -1,4 +1,4 @@
-# PGGAN
+# EfficientNet
 
 A PyTorch implementation of `EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks.`
 
