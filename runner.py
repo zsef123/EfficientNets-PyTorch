@@ -79,9 +79,9 @@ class Runner():
             print("Load Failed, not exists file")
 
     def train(self, train_loader, val_loader=None):
-        print("\nStart Train len :", len(train_loader.dataset))
-        self.net.train()
+        print("\nStart Train len :", len(train_loader.dataset))        
         for epoch in range(self.start_epoch, self.arg.epoch):
+            self.net.train()
             for i, (input_, target_) in enumerate(train_loader):
                 target_ = target_.to(self.torch_device, non_blocking=True)
                 out = self.net(input_)
