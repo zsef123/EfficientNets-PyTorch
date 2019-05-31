@@ -36,6 +36,9 @@ def arg_parse():
     parser.add_argument('--batch_size', type=int, default=1024, help='The size of batch')
     parser.add_argument('--test', action="store_true", help='Only Test')
 
+    parser.add_argument('--ema_decay', type=float, default=0.9999,
+                        help="Exponential Moving Average Term")
+
     parser.add_argument('--dropout_rate', type=float, default=0.2)
     parser.add_argument('--dropconnect_rate', type=float, default=0.2)
 

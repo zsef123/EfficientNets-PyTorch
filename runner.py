@@ -1,4 +1,5 @@
 import os
+import copy
 import time
 from glob import glob
 
@@ -19,6 +20,12 @@ class Runner():
         self.torch_device = torch_device
 
         self.net = net
+        self.ema = copy.deepcopy(net.module).cpu()
+        self.ema.eval()
+        for p in self.ema.parameters():
+            p.requires_grad_(False)
+        self.ema_decay = arg.ema_decay
+
         self.loss = loss
         self.optim = optim
         self.scheduler = scheduler
@@ -46,6 +53,7 @@ class Runner():
         torch.save({"model_type": self.arg.model,
                     "start_epoch": epoch + 1,
                     "network": self.net.module.state_dict(),
+                    "ema": self.ema.state_dict(),
                     "optimizer": self.optim.state_dict(),
                     "best_metric": self.best_metric
                     }, self.save_dir + "/%s.pth.tar" % (filename))
@@ -71,6 +79,7 @@ class Runner():
                                  (ckpoint["model_type"]))
 
             self.net.module.load_state_dict(ckpoint['network'])
+            self.ema.load_state_dict(ckpoint['ema'])
             self.optim.load_state_dict(ckpoint['optimizer'])
             self.start_epoch = ckpoint['start_epoch']
             self.best_metric = ckpoint["best_metric"]
@@ -79,10 +88,17 @@ class Runner():
         else:
             print("Load Failed, not exists file")
 
+    def update_ema(self):
+        with torch.no_grad():
+            named_param = dict(self.net.module.named_parameters())
+            for k, v in self.ema.named_parameters():
+                param = named_param[k].detach().cpu()
+                v.copy_(self.ema_decay * v + (1 - self.ema_decay) * param)
+
     def train(self, train_loader, val_loader=None):
         print("\nStart Train len :", len(train_loader.dataset))        
+        self.net.train()
         for epoch in range(self.start_epoch, self.arg.epoch):
-            self.net.train()
             for i, (input_, target_) in enumerate(train_loader):
                 target_ = target_.to(self.torch_device, non_blocking=True)
 
@@ -95,6 +111,7 @@ class Runner():
                 self.optim.zero_grad()
                 loss.backward()
                 self.optim.step()
+                self.update_ema()
 
                 if (i % 50) == 0:
                     self.logger.log_write("train", epoch=epoch, loss=loss.item())
@@ -103,32 +120,28 @@ class Runner():
 
     def _get_acc(self, loader):
         correct = 0
-        for input_, target_ in loader:
-            target_ = target_.to(self.torch_device, non_blocking=True)
-            out = self.net(input_)
-            out = F.softmax(out, dim=1)
+        with torch.no_grad():
+            for input_, target_ in loader:
+                out = self.ema(input_)
+                out = F.softmax(out, dim=1)
 
-            _, idx = out.max(dim=1)
-            correct += (target_ == idx).sum().cpu().item()
+                _, idx = out.max(dim=1)
+                correct += (target_ == idx).sum().item()
         return correct / len(loader.dataset)
 
     def valid(self, epoch, val_loader):
-        self.net.eval()
-        with torch.no_grad():
-            acc = self._get_acc(val_loader)
-            self.logger.log_write("valid", epoch=epoch, acc=acc)
+        acc = self._get_acc(val_loader)
+        self.logger.log_write("valid", epoch=epoch, acc=acc)
 
-            if acc > self.best_metric:
-                self.best_metric = acc
-                self.save(epoch, "epoch[%05d]_acc[%.4f]" % (
-                    epoch, acc))
+        if acc > self.best_metric:
+            self.best_metric = acc
+            self.save(epoch, "epoch[%05d]_acc[%.4f]" % (
+                epoch, acc))
 
     def test(self, train_loader, val_loader):
         print("\n Start Test")
         self.load()
-        self.net.eval()
-        with torch.no_grad():
-            train_acc = self._get_acc(train_loader)
-            valid_acc = self._get_acc(val_loader)
-            self.logger.log_write("test", fname="test", train_acc=train_acc, valid_acc=valid_acc)
+        train_acc = self._get_acc(train_loader)
+        valid_acc = self._get_acc(val_loader)
+        self.logger.log_write("test", fname="test", train_acc=train_acc, valid_acc=valid_acc)
         return train_acc, valid_acc
