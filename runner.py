@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 class Runner():
-    def __init__(self, arg, net, optim, torch_device, loss, logger):
+    def __init__(self, arg, net, optim, torch_device, loss, logger, scheduler=None):
         self.arg = arg
         self.save_dir = arg.save_dir
 
@@ -21,6 +21,7 @@ class Runner():
         self.net = net
         self.loss = loss
         self.optim = optim
+        self.scheduler = scheduler
 
         self.start_epoch = 0
         self.best_metric = -1
@@ -84,6 +85,10 @@ class Runner():
             self.net.train()
             for i, (input_, target_) in enumerate(train_loader):
                 target_ = target_.to(self.torch_device, non_blocking=True)
+
+                if self.scheduler:
+                    self.scheduler.step()
+
                 out = self.net(input_)
                 loss = self.loss(out, target_)
 

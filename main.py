@@ -3,6 +3,8 @@ import argparse
 
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from effnet import EfficientNet
 from runner import Runner
@@ -45,12 +47,25 @@ def arg_parse():
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--eps',      type=float, default=0.001)
     parser.add_argument('--decay',    type=float, default=1e-5)
+
+    parser.add_argument('--scheduler', type=str, default='exp', choices=["exp", "cosine", "none"],
+                        help="Learning rate scheduler type")
+
     return parser.parse_args()
 
 
 def get_model(arg, classes=1000):
     if arg.model == "b0":
         return EfficientNet(1, 1, num_classes=classes)
+
+
+def get_scheduler(optim, sche_type, step_size, t_max):
+    if sche_type == "exp":
+        return StepLR(optim, step_size, 0.97)
+    elif sche_type == "cosine":
+        return CosineAnnealingLR(optim, t_max)
+    else:
+        return None
 
 
 if __name__ == "__main__":
@@ -72,12 +87,15 @@ if __name__ == "__main__":
     net = nn.DataParallel(net).to(torch_device)
     loss = nn.CrossEntropyLoss()
 
+    scaled_lr = arg.lr * arg.batch_size / 256
     optim = {
         # "adam" : lambda : torch.optim.Adam(net.parameters(), lr=arg.lr, betas=arg.beta, weight_decay=arg.decay),
-        "rmsprop" : lambda : torch.optim.RMSprop(net.parameters(), lr=arg.lr, momentum=arg.momentum, eps=arg.eps, weight_decay=arg.decay)
+        "rmsprop" : lambda : torch.optim.RMSprop(net.parameters(), lr=scaled_lr, momentum=arg.momentum, eps=arg.eps, weight_decay=arg.decay)
     }[arg.optim]()
 
-    model = Runner(arg, net, optim, torch_device, loss, logger)
+    scheduler = get_scheduler(optim, arg.scheduler, int(2.4 * len(train_loader)), arg.epoch * len(train_loader))
+
+    model = Runner(arg, net, optim, torch_device, loss, logger, scheduler)
     if arg.test is False:
         model.train(train_loader, val_loader)
     model.test(train_loader, val_loader)
