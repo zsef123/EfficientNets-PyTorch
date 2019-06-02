@@ -45,7 +45,7 @@ class DropConnect(nn.Module):
         self.ratio = 1.0 - ratio
 
     def forward(self, x):
-        if not self.training():
+        if not self.training:
             return x
 
         random_tensor = self.ratio
