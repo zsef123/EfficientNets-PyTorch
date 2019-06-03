@@ -1,10 +1,13 @@
+conversion/*.pth
+conversion/*.tar.gz
+conversion/efficientnet-b*
+
 data
 data/*
 outs
 outs/*
 
 .DS_Store
-*.ipynb
 *.npy
 *.jpg
 *.mat

@@ -3,54 +3,11 @@ import math
 import torch
 import torch.nn as nn
 
-
-def conv_bn_act(in_, out_, kernel_size,
-                stride=1, padding=0, groups=1, bias=True,
-                eps=1e-3, momentum=0.01):
-    return nn.Sequential(
-        nn.Conv2d(in_, out_, kernel_size, stride=stride, padding=padding, groups=groups, bias=bias),
-        nn.BatchNorm2d(out_, eps, momentum),
-        Swish()
-    )
-
-
-class Swish(nn.Module):
-    def forward(self, x):
-        return x * torch.sigmoid(x)
-
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        return x.view(x.shape[0], -1)
-
-
-class SEModule(nn.Module):
-    def __init__(self, in_, ratio=0.25):
-        super().__init__()
-        mid_ = int(in_ * ratio)
-        self.se = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_, mid_, kernel_size=1, stride=1, padding=0, bias=True),
-            Swish(),
-            nn.Conv2d(mid_, in_, kernel_size=1, stride=1, padding=0, bias=True),
-        )
-
-    def forward(self, x):
-        return x * torch.sigmoid(self.se(x))
-
-
-class DropConnect(nn.Module):
-    def __init__(self, ratio):
-        super().__init__()
-        self.ratio = 1.0 - ratio
-
-    def forward(self, x):
-        if not self.training:
-            return x
-
-        random_tensor = self.ratio
-        random_tensor += torch.rand([x.shape[0], 1, 1, 1], dtype=torch.float)
-        return x / self.ratio * random_tensor.floor()
+from models.layers import conv_bn_act
+from models.layers import SamePadConv2d
+from models.layers import Flatten
+from models.layers import SEModule
+from models.layers import DropConnect
 
 
 class MBConv(nn.Module):
@@ -62,13 +19,13 @@ class MBConv(nn.Module):
         self.expand_conv = conv_bn_act(in_, mid_, kernel_size=1, bias=False) if expand != 1 else nn.Identity()
 
         self.depth_wise_conv = conv_bn_act(mid_, mid_,
-                                           kernel_size=kernel_size, stride=stride, padding=kernel_size // 2,
+                                           kernel_size=kernel_size, stride=stride,
                                            groups=mid_, bias=False)
 
-        self.se = SEModule(mid_, se_ratio) if se_ratio > 0 else nn.Identity()
+        self.se = SEModule(mid_, int(in_ * se_ratio)) if se_ratio > 0 else nn.Identity()
 
         self.project_conv = nn.Sequential(
-            nn.Conv2d(mid_, out_, kernel_size=1, stride=1, padding=0, bias=False),
+            SamePadConv2d(mid_, out_, kernel_size=1, stride=1, bias=False),
             nn.BatchNorm2d(out_, 1e-3, 0.01)
         )
 
@@ -76,8 +33,12 @@ class MBConv(nn.Module):
         # and all(s == 1 for s in self._block_args.strides)
         # and self._block_args.input_filters == self._block_args.output_filters:
         self.skip = skip and (stride == 1) and (in_ == out_)
-        if self.skip:
-            self.dropconnect = DropConnect(dc_ratio)
+
+        # DropConnect
+        # self.dropconnect = DropConnect(dc_ratio) if dc_ratio > 0 else nn.Identity()
+        # Original TF Repo not using drop_rate
+        # https://github.com/tensorflow/tpu/blob/05f7b15cdf0ae36bac84beb4aef0a09983ce8f66/models/official/efficientnet/efficientnet_model.py#L408
+        self.dropconnect = nn.Identity()
 
     def forward(self, inputs):
         expand = self.expand_conv(inputs)
@@ -85,7 +46,8 @@ class MBConv(nn.Module):
         x = self.se(x)
         x = self.project_conv(x)
         if self.skip:
-            x = x + self.dropconnect(inputs)
+            x = self.dropconnect(x)
+            x = x + inputs
         return x
 
 
@@ -109,7 +71,7 @@ class EfficientNet(nn.Module):
         super().__init__()
         min_depth = min_depth or depth_div
 
-        self.stem = conv_bn_act(3, 32, kernel_size=3, stride=2, padding=1, bias=False)
+        self.stem = conv_bn_act(3, 32, kernel_size=3, stride=2, bias=False)
 
         def renew_ch(x):
             if not width_coeff:
@@ -125,17 +87,18 @@ class EfficientNet(nn.Module):
             return int(math.ceil(x * depth_coeff))
 
         self.blocks = nn.Sequential(
-            MBBlock(renew_ch(32), renew_ch(16), 1, 3, 1, renew_repeat(1), False, 0.25, drop_connect_rate),
-            MBBlock(renew_ch(16), renew_ch(24), 6, 3, 2, renew_repeat(2), False, 0.25, drop_connect_rate),
-            MBBlock(renew_ch(24), renew_ch(40), 6, 5, 2, renew_repeat(2), False, 0.25, drop_connect_rate),
-            MBBlock(renew_ch(40), renew_ch(80), 6, 3, 2, renew_repeat(3), False, 0.25, drop_connect_rate),
-            MBBlock(renew_ch(80), renew_ch(112), 6, 5, 1, renew_repeat(3), False, 0.25, drop_connect_rate),
-            MBBlock(renew_ch(112), renew_ch(192), 6, 5, 2, renew_repeat(4), False, 0.25, drop_connect_rate),
-            MBBlock(renew_ch(192), renew_ch(320), 6, 3, 1, renew_repeat(1), False, 0.25, drop_connect_rate)
+            #       input channel  output    expand  k  s                   skip  se
+            MBBlock(renew_ch(32), renew_ch(16), 1, 3, 1, renew_repeat(1), True, 0.25, drop_connect_rate),
+            MBBlock(renew_ch(16), renew_ch(24), 6, 3, 2, renew_repeat(2), True, 0.25, drop_connect_rate),
+            MBBlock(renew_ch(24), renew_ch(40), 6, 5, 2, renew_repeat(2), True, 0.25, drop_connect_rate),
+            MBBlock(renew_ch(40), renew_ch(80), 6, 3, 2, renew_repeat(3), True, 0.25, drop_connect_rate),
+            MBBlock(renew_ch(80), renew_ch(112), 6, 5, 1, renew_repeat(3), True, 0.25, drop_connect_rate),
+            MBBlock(renew_ch(112), renew_ch(192), 6, 5, 2, renew_repeat(4), True, 0.25, drop_connect_rate),
+            MBBlock(renew_ch(192), renew_ch(320), 6, 3, 1, renew_repeat(1), True, 0.25, drop_connect_rate)
         )
 
         self.head = nn.Sequential(
-            *conv_bn_act(320, renew_ch(1280), kernel_size=1, padding=0, bias=False),
+            *conv_bn_act(320, renew_ch(1280), kernel_size=1, bias=False),
             nn.AdaptiveAvgPool2d(1),
             nn.Dropout2d(dropout_rate, True) if dropout_rate > 0 else nn.Identity(),
             Flatten(),
@@ -146,7 +109,7 @@ class EfficientNet(nn.Module):
 
     def init_weights(self):
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, SamePadConv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out")
             elif isinstance(m, nn.Linear):
                 init_range = 1.0 / math.sqrt(m.weight.shape[1])

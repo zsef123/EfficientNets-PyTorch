@@ -11,7 +11,15 @@ A PyTorch implementation of `EfficientNet: Rethinking Model Scaling for Convolut
 Implement based on Official TF Repo. Only opened EfficientNet is included. <br>
 This repo not contains baseline network search(Mnas-Net) and compound coefficient search methods.<br>
 
-<b>This codes are still testing. Some details(HyperParams, transform, EMA ...) are different with Original repo.</b>
+<b>Some details(HyperParams, transform, EMA ...) are different with Original repo.</b>
+
+
+## Pretrained network
+
+This is not end-to-end imagenet trainning weight.
+Using the Official TF Pretrained weight.
+
+Please check the `conversion/readme.md`
 
 
 ## How to use:
@@ -55,8 +63,6 @@ optional arguments:
 ### TODO
 
  - Hyper Parameter / Imagenet Transformation Check
- - Implementation of Exponetial Moving Average 
- - Implementation of Learning Rate Step
  - Implementation of Resolution Change
  - Validation on Imagenet Dataset
  - Clean up logging
