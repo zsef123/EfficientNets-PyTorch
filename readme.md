@@ -19,7 +19,7 @@ This repo not contains baseline network search(Mnas-Net) and compound coefficien
 This is not end-to-end imagenet trainning weight.
 Using the Official TF Pretrained weight.
 
-Please check the `conversion/readme.md`
+Please check the [conversion/readme.md](conversion/readme.md) and [pretrained_example.ipynb](pretrained_example.ipynb)
 
 
 ## How to use:
