@@ -98,7 +98,7 @@ class EfficientNet(nn.Module):
         )
 
         self.head = nn.Sequential(
-            *conv_bn_act(320, renew_ch(1280), kernel_size=1, bias=False),
+            *conv_bn_act(renew_ch(320), renew_ch(1280), kernel_size=1, bias=False),
             nn.AdaptiveAvgPool2d(1),
             nn.Dropout2d(dropout_rate, True) if dropout_rate > 0 else nn.Identity(),
             Flatten(),
