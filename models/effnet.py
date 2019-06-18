@@ -70,9 +70,7 @@ class EfficientNet(nn.Module):
                  num_classes=1000):
         super().__init__()
         min_depth = min_depth or depth_div
-
-        self.stem = conv_bn_act(3, 32, kernel_size=3, stride=2, bias=False)
-
+        
         def renew_ch(x):
             if not width_coeff:
                 return x
@@ -86,6 +84,8 @@ class EfficientNet(nn.Module):
         def renew_repeat(x):
             return int(math.ceil(x * depth_coeff))
 
+        self.stem = conv_bn_act(3, renew_ch(32), kernel_size=3, stride=2, bias=False)
+        
         self.blocks = nn.Sequential(
             #       input channel  output    expand  k  s                   skip  se
             MBBlock(renew_ch(32), renew_ch(16), 1, 3, 1, renew_repeat(1), True, 0.25, drop_connect_rate),
